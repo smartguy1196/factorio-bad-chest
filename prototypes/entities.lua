@@ -1,19 +1,21 @@
+local function png(name) return ('__recursive-blueprints__/graphics/%s.png'):format(name) end
+
 local deployer = table.deepcopy(data.raw["container"]["steel-chest"])
 deployer.name = "blueprint-deployer"
-deployer.icon = "__recursive-blueprints__/graphics/blueprint-deployer-icon.png"
+deployer.icon = png("blueprint-deployer-icon")
 deployer.icon_size = 32
 deployer.icons = nil
 deployer.minable.result = "blueprint-deployer"
 deployer.inventory_size = 1
 deployer.picture.layers = {
   {
-    filename = "__recursive-blueprints__/graphics/blueprint-deployer.png",
+    filename = png("blueprint-deployer"),
     priority = "extra-high",
     width = 32,
     height = 36,
     shift = util.by_pixel(0, -2),
     hr_version = {
-      filename = "__recursive-blueprints__/graphics/hr-blueprint-deployer.png",
+      filename = png("hr-blueprint-deployer"),
       priority = "extra-high",
       width = 66,
       height = 72,

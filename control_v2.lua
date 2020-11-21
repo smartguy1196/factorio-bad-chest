@@ -9,12 +9,22 @@ local HEIGHT_SIGNAL = {name="signal-H", type="virtual"}
 local ROTATE_SIGNAL = {name="signal-R", type="virtual"}
 
 function on_init()
-  global.deployers = {}
+  global.deployers = {
+    entities = {},
+    chests = {},
+    outputs = {},
+    blueprints = {}
+  }
   on_mods_changed()
 end
 
 function on_mods_changed()
-  if not global.deployers then global.deployers = {} end
+  if not global.deployers then global.deployers = {
+    entities = {},
+    chests = {},
+    outputs = {},
+    blueprints = {}
+  } end
   global.net_cache = {}
 
   -- Construction robotics unlocks deployer chest
@@ -41,103 +51,110 @@ function on_built(event)
   local entity = event.created_entity or event.entity or event.destination
   if not entity or not entity.valid then return end
   if entity.name == "blueprint-deployer" then
-    table.insert(global.deployers, entity)
+
+    local uid = entity.unit_number
+    global.deployers.entities[ uid ] = entity
+    global.deployers.chests[ uid ] = entity
+
   end
+  if entity.name == "blueprint-combinator" then
+    local uid = entity.unit_number
+    global.deployers.entities[ uid ] = entity
+    --global.deployers.chests[ uid ] = entity
+    --todo: attach output combinator to built entity
 
-  -- add combinator code
-
+  end
 end
 
 function on_tick(event)
 
-  -- add combinator code
+  --todo: add combinator code
 
-  for key, deployer in pairs(global.deployers) do
+  for uid, deployer in pairs( global.deployers.entities ) do
     if deployer.valid then
-      on_tick_deployer(deployer)
+      on_tick_deployer( deployer, uid )
     else
-      global.deployers[key] = nil
+      global.deployers.entities[ uid ] = nil
+      global.deployers.chests[ uid ] = nil
+      global.deployers.outputs[ uid ] = nil
+      global.deployers.blueprints[ uid ] = nil
     end
   end
 end
 
-function on_tick_deployer(deployer)
-  local bp = nil
-  local deploy = get_signal(deployer, DEPLOY_SIGNAL)
-  if deploy > 0 then
+function on_tick_deployer( deployer, uid )
 
-    -- add combinator code
+  local blueprint, chest, output = nil, global.deployers.chests[ uid ], global.deployers.outputs[ uid ]
 
-    bp = deployer.get_inventory(defines.inventory.chest)[1]
-    if not bp.valid_for_read then return end
+  local deploy = get_signal( deployer, DEPLOY_SIGNAL )
+  if chest.get_inventory( defines.inventory.chest )[1] then
 
-    if bp.is_blueprint_book then
-      -- Pick item from blueprint book
-      local inventory = bp.get_inventory(defines.inventory.item_main)
+    blueprint = chest.get_inventory( defines.inventory.chest )[1]
+    if not blueprint.valid_for_read then return end
+    if blueprint.is_blueprint_book then
+
+      local book_inventory = blueprint.get_inventory( defines.inventory.item_main )
       local size = inventory.get_item_count()
       if size < 1 then return end
-      if deploy > size then
-        deploy = bp.active_index
-      end
-      bp = inventory[deploy]
-      if not bp.valid_for_read then return end
-    end
 
-    if bp.is_blueprint then
+      if deploy > size then deploy. = blueprint.active_index end
+      blueprint = book_inventory[ deploy ]
+      if not blueprint.valid_for_read then return end
+
+      global.deployers.blueprints[ uid ] = blueprint
+    end
+  end
+  if deploy > 0 then
+    if blueprint.is_blueprint then
       -- Deploy blueprint
-      deploy_blueprint(bp, deployer)
-    elseif bp.is_deconstruction_item then
+      deploy_blueprint( blueprint, deployer )
+    elseif blueprint.is_deconstruction_item then
       -- Deconstruct area
-      deconstruct_area(bp, deployer, true)
-    elseif bp.is_upgrade_item then
+      deconstruct_area( blueprint, deployer, true )
+    elseif blueprint.is_upgrade_item then
       -- Upgrade area
-      upgrade_area(bp, deployer, true)
+      upgrade_area( blueprint, deployer, true )
     end
     return
   end
 
   if deploy == -1 then
-
-    -- add combinator code
-
-    bp = deployer.get_inventory(defines.inventory.chest)[1]
-    if not bp.valid_for_read then return end
-    if bp.is_deconstruction_item then
+    if blueprint.is_deconstruction_item then
       -- Cancel deconstruction in area
-      deconstruct_area(bp, deployer, false)
-    elseif bp.is_upgrade_item then
+      deconstruct_area( blueprint, deployer, false )
+    elseif blueprint.is_upgrade_item then
       -- Cancel upgrade in area
-      upgrade_area(bp, deployer, false)
+      upgrade_area( blueprint, deployer, false )
     end
     return
   end
 
-  local deconstruct = get_signal(deployer, DECONSTRUCT_SIGNAL)
+  local deconstruct = get_signal( deployer, DECONSTRUCT_SIGNAL )
   if deconstruct == -1 then
     -- Deconstruct area
-    deconstruct_area(bp, deployer, true)
+    deconstruct_area( blueprint, deployer, true )
     return
   elseif deconstruct == -2 then
     -- Deconstruct self
-    deployer.order_deconstruction(deployer.force)
+    deployer.order_deconstruction( deployer.force )
     return
   elseif deconstruct == -3 then
     -- Cancel deconstruction in area
-    deconstruct_area(bp, deployer, false)
+    deconstruct_area( blueprint, deployer, false )
     return
   end
 
-  local copy = get_signal(deployer, COPY_SIGNAL)
+  local copy = get_signal( deployer, COPY_SIGNAL )
   if copy == 1 then
     -- Copy blueprint
-    copy_blueprint(deployer)
+    copy_blueprint( deployer )
     return
   elseif copy == -1 then
     -- Delete blueprint
 
-    -- add combinator code
+    --todo: add combinator code
 
-    local stack = deployer.get_inventory(defines.inventory.chest)[1]
+    local stack = chest.get_inventory( defines.inventory.chest )[1]
     if not stack.valid_for_read then return end
     if stack.is_blueprint
     or stack.is_blueprint_book
@@ -149,13 +166,13 @@ function on_tick_deployer(deployer)
   end
 end
 
-function deploy_blueprint(bp, deployer)
+function deploy_blueprint( bp, deployer )
   if not bp then return end
   if not bp.valid_for_read then return end
   if not bp.is_blueprint_setup() then return end
 
   -- Rotate
-  local rotation = get_signal(deployer, ROTATE_SIGNAL)
+  local rotation = get_signal( deployer, ROTATE_SIGNAL )
   local direction = defines.direction.north
   if (rotation == 1) then
     direction = defines.direction.east
@@ -167,8 +184,8 @@ function deploy_blueprint(bp, deployer)
 
   -- Shift x,y coordinates
   local position = {
-    x = deployer.position.x + get_signal(deployer, X_SIGNAL),
-    y = deployer.position.y + get_signal(deployer, Y_SIGNAL),
+    x = deployer.position.x + get_signal( deployer, X_SIGNAL ),
+    y = deployer.position.y + get_signal( deployer, Y_SIGNAL ),
   }
 
   -- Check for building out of bounds
@@ -195,8 +212,8 @@ function deploy_blueprint(bp, deployer)
   end
 end
 
-function deconstruct_area(bp, deployer, deconstruct)
-  local area = get_area(deployer)
+function deconstruct_area( bp, deployer, deconstruct )
+  local area = get_area( deployer )
   if deconstruct == false then
     -- Cancel area
     deployer.surface.cancel_deconstruct_area{
@@ -271,8 +288,10 @@ function get_area(deployer)
   }
 end
 
-function copy_blueprint(deployer)
-  local inventory = deployer.get_inventory(defines.inventory.chest)
+function copy_blueprint( deployer )
+  local uid = deployer.unit_number
+  local chest = global.deployers.chests[ uid ]
+  local inventory = chest.get_inventory(defines.inventory.chest)
   if not inventory.is_empty() then return end
   for _, signal in pairs(global.blueprint_signals) do
     -- Check for a signal before doing an expensive search
@@ -399,7 +418,7 @@ script.on_configuration_changed(on_mods_changed)
 script.on_event(defines.events.on_tick, on_tick)
 
 -- Deployer chest events
-local filter = {{filter = "name", name = "blueprint-deployer"}}
+local filter = {{filter = "name", name = "blueprint-deployer"},{filter = "name", name = "blueprint-combinator"}}
 script.on_event(defines.events.on_built_entity, on_built, filter)
 script.on_event(defines.events.on_robot_built_entity, on_built, filter)
 script.on_event(defines.events.on_entity_cloned, on_built, filter)

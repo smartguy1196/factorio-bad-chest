@@ -9,9 +9,9 @@ local blueprintCOMBINATOR = table.deepcopy(data.raw['arithmetic-combinator']['ar
 local baseDECIDER = data.raw['decider-combinator']['decider-combinator']
 
 blueprintCOMBINATOR.name = 'blueprint-combinator'
--- blueprintCOMBINATOR.icon = png('blueprint-combinator-icon')
--- blueprintCOMBINATOR.icon_size = 32
--- blueprintCOMBINATOR.icons = nill
+blueprintCOMBINATOR.icon = png('blueprint-combinator-icon')
+blueprintCOMBINATOR.icon_size = 32
+blueprintCOMBINATOR.icons = nill
 blueprintCOMBINATOR.minable.result = 'blueprint-combinator'
 
 -- DUPE and REPLACE decider sprite sheet
@@ -55,7 +55,7 @@ do
 	local invisible_sprite = {filename=png('invisible'), width=1, height=1}
 	local wire_conn = {wire={red={0, 0}, green={0, 0}}, shadow={red={0, 0}, green={0, 0}}}
   local invisible_chest = table.deepcopy(data.raw["container"]["steel-chest"])
-  invisible_chest.name = 'blueprint-core-const'
+  invisible_chest.name = 'blueprint-core-chest'
   invisible_chest.collision_mask = {}
   invisible_chest.inventory_size = 1
   invisible_chest.sprites = invisible_sprite

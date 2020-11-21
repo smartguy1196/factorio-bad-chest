@@ -9,8 +9,8 @@ local HEIGHT_SIGNAL = {name="signal-H", type="virtual"}
 local ROTATE_SIGNAL = {name="signal-R", type="virtual"}
 
 function on_init()
-  global.deployers = {
-    entities = {},
+  global.recursive = {
+    deployers = {},
     chests = {},
     outputs = {},
     blueprints = {}
@@ -19,8 +19,8 @@ function on_init()
 end
 
 function on_mods_changed()
-  if not global.deployers then global.deployers = {
-    entities = {},
+  if not global.recursive then global.recursive = {
+    deployers = {},
     chests = {},
     outputs = {},
     blueprints = {}
@@ -53,14 +53,14 @@ function on_built(event)
   if entity.name == "blueprint-deployer" then
 
     local uid = entity.unit_number
-    global.deployers.entities[ uid ] = entity
-    global.deployers.chests[ uid ] = entity
+    global.recursive.deployers[ uid ] = entity
+    global.recursive.chests[ uid ] = entity
 
   end
   if entity.name == "blueprint-combinator" then
     local uid = entity.unit_number
-    global.deployers.entities[ uid ] = entity
-    --global.deployers.chests[ uid ] = entity
+    global.recursive.deployers[ uid ] = entity
+    --global.recursive.chests[ uid ] = entity
     --todo: attach output combinator to built entity
 
   end
@@ -70,21 +70,21 @@ function on_tick(event)
 
   --todo: add combinator code
 
-  for uid, deployer in pairs( global.deployers.entities ) do
+  for uid, deployer in pairs( global.recursive.deployers ) do
     if deployer.valid then
       on_tick_deployer( deployer, uid )
     else
-      global.deployers.entities[ uid ] = nil
-      global.deployers.chests[ uid ] = nil
-      global.deployers.outputs[ uid ] = nil
-      global.deployers.blueprints[ uid ] = nil
+      global.recursive.deployers[ uid ] = nil
+      global.recursive.chests[ uid ] = nil
+      global.recursive.outputs[ uid ] = nil
+      global.recursive.blueprints[ uid ] = nil
     end
   end
 end
 
 function on_tick_deployer( deployer, uid )
 
-  local blueprint, chest, output = nil, global.deployers.chests[ uid ], global.deployers.outputs[ uid ]
+  local blueprint, chest, output = nil, global.recursive.chests[ uid ], global.recursive.outputs[ uid ]
 
   local deploy = get_signal( deployer, DEPLOY_SIGNAL )
   if chest.get_inventory( defines.inventory.chest )[1] then
@@ -101,10 +101,10 @@ function on_tick_deployer( deployer, uid )
       blueprint = book_inventory[ deploy ]
       if not blueprint.valid_for_read then return end
 
-      global.deployers.blueprints[ uid ] = blueprint
+      global.recursive.blueprints[ uid ] = blueprint
     end
   else
-    global.deployers.blueprint[ uid ] = nil
+    global.recursive.blueprint[ uid ] = nil
   end
   if deploy > 0 then
     if blueprint.is_blueprint then
@@ -292,7 +292,7 @@ end
 
 function copy_blueprint( deployer )
   local uid = deployer.unit_number
-  local chest = global.deployers.chests[ uid ]
+  local chest = global.recursive.chests[ uid ]
   local inventory = chest.get_inventory(defines.inventory.chest)
   if not inventory.is_empty() then return end
   for _, signal in pairs(global.blueprint_signals) do

@@ -13,6 +13,7 @@ blueprintCOMBINATOR.icon = png('blueprint-combinator-icon')
 blueprintCOMBINATOR.icon_size = 32
 blueprintCOMBINATOR.icons = nill
 blueprintCOMBINATOR.minable.result = 'blueprint-combinator'
+blueprintCOMBINATOR.flags = {'hide-alt-info'}
 
 -- DUPE and REPLACE decider sprite sheet
 blueprintCOMBINATOR.sprites = table.deepcopy(baseDECIDER.sprites)
@@ -62,11 +63,12 @@ do
   invisible_chest.circuit_wire_max_distance = 3
   invisible_chest.circuit_wire_connection_points = {wire_conn, wire_conn, wire_conn, wire_conn}
   invisible_chest.draw_circuit_wires = false
+  invisible_chest.flags = {'placeable-off-grid'}
 
   data:extend{ blueprintCOMBINATOR, invisible_chest,
 		{ type = 'constant-combinator',
 			name = 'blueprint-core-const',
-			flags = {'placeable-off-grid'},
+			flags = {'placeable-off-grid', 'hide-alt-info'},
 			collision_mask = {},
 			item_slot_count = 500,
 			circuit_wire_max_distance = 3,

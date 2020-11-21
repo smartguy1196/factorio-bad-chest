@@ -27,7 +27,7 @@ function on_mods_changed()
   } end
   global.net_cache = {}
 
-  -- Construction robotics unlocks deployer chest
+  -- Construction robotics unlocks deployer chest and combinator
   for _, force in pairs(game.forces) do
     if force.technologies["construction-robotics"].researched then
       force.recipes["blueprint-deployer"].enabled = true
@@ -42,12 +42,12 @@ function on_mods_changed()
     or item.type == "blueprint-book"
     or item.type == "upgrade-item"
     or item.type == "deconstruction-item" then
-      table.insert(global.blueprint_signals, {name=item.name, type="item"})
+      table.insert( global.blueprint_signals, {name=item.name, type="item"} )
     end
   end
 end
 
-function on_built(event)
+function on_built( event )
   local entity = event.created_entity or event.entity or event.destination
   if not entity or not entity.valid then return end
   if entity.name == "blueprint-deployer" then
@@ -60,33 +60,46 @@ function on_built(event)
   if entity.name == "blueprint-combinator" then
     local uid = entity.unit_number
     global.recursive.deployers[ uid ] = entity
-    --global.recursive.chests[ uid ] = entity
-    --todo: attach output combinator to built entity
+    build_combinator( uid )
 
   end
 end
 
-function on_tick(event)
+function delete_deployer( uid )
 
-  --todo: add combinator code
+  --todo: add code to delete deployer fully on destruction of deployer entity
+  --global.recursive.deployers[ uid ] = nil
+  --global.recursive.chests[ uid ] = nil
+  --global.recursive.outputs[ uid ] = nil
+  --global.recursive.blueprints[ uid ] = nil
 
+end
+
+function buid_combinator( uid )
+
+  --global.recursive.chests[ uid ] = entity
+  --todo: attach output combinator to built entity
+
+end
+
+function on_tick( event )
   for uid, deployer in pairs( global.recursive.deployers ) do
     if deployer.valid then
-      on_tick_deployer( deployer, uid )
+      on_tick_deployer( uid )
     else
-      global.recursive.deployers[ uid ] = nil
-      global.recursive.chests[ uid ] = nil
-      global.recursive.outputs[ uid ] = nil
-      global.recursive.blueprints[ uid ] = nil
+      delete_deployer( uid )
     end
   end
 end
 
-function on_tick_deployer( deployer, uid )
+function set_blueprint( uid )
 
-  local blueprint, chest, output = nil, global.recursive.chests[ uid ], global.recursive.outputs[ uid ]
+  local deployer = global.recursive.deployers[ uid ]
+  local chest = global.recursive.chests[ uid ]
+  local blueprint = nil
 
   local deploy = get_signal( deployer, DEPLOY_SIGNAL )
+
   if chest.get_inventory( defines.inventory.chest )[1] then
 
     blueprint = chest.get_inventory( defines.inventory.chest )[1]
@@ -97,22 +110,31 @@ function on_tick_deployer( deployer, uid )
       local size = inventory.get_item_count()
       if size < 1 then return end
 
-      if deploy > size then deploy. = blueprint.active_index end
+      if deploy > size then deploy = blueprint.active_index end
       blueprint = book_inventory[ deploy ]
       if not blueprint.valid_for_read then return end
 
       global.recursive.blueprints[ uid ] = blueprint
     end
-  else
-    global.recursive.blueprint[ uid ] = nil
   end
+  return blueprint
+end
+
+function on_tick_deployer( uid )
+
+  local deployer = global.recursive.deployers[ uid ]
+  local chest = global.recursive.chests[ uid ]
+  local output = global.recursive.outputs[ uid ]
+  local blueprint = global.recursive.blueprint[ uid ]
+
+  local deploy = get_signal( deployer, DEPLOY_SIGNAL )
   if deploy > 0 then
     if blueprint.is_blueprint then
       -- Deploy blueprint
-      deploy_blueprint( blueprint, deployer )
+      deploy_blueprint( uid )
     elseif blueprint.is_deconstruction_item then
       -- Deconstruct area
-      deconstruct_area( blueprint, deployer, true )
+      deconstruct_area( uid, true )
     elseif blueprint.is_upgrade_item then
       -- Upgrade area
       upgrade_area( blueprint, deployer, true )
@@ -123,10 +145,10 @@ function on_tick_deployer( deployer, uid )
   if deploy == -1 then
     if blueprint.is_deconstruction_item then
       -- Cancel deconstruction in area
-      deconstruct_area( blueprint, deployer, false )
+      deconstruct_area( uid, false )
     elseif blueprint.is_upgrade_item then
       -- Cancel upgrade in area
-      upgrade_area( blueprint, deployer, false )
+      upgrade_area( uid, false )
     end
     return
   end
@@ -134,7 +156,7 @@ function on_tick_deployer( deployer, uid )
   local deconstruct = get_signal( deployer, DECONSTRUCT_SIGNAL )
   if deconstruct == -1 then
     -- Deconstruct area
-    deconstruct_area( blueprint, deployer, true )
+    deconstruct_area( uid, true )
     return
   elseif deconstruct == -2 then
     -- Deconstruct self
@@ -142,14 +164,14 @@ function on_tick_deployer( deployer, uid )
     return
   elseif deconstruct == -3 then
     -- Cancel deconstruction in area
-    deconstruct_area( blueprint, deployer, false )
+    deconstruct_area( uid, false )
     return
   end
 
   local copy = get_signal( deployer, COPY_SIGNAL )
   if copy == 1 then
     -- Copy blueprint
-    copy_blueprint( deployer )
+    copy_blueprint( uid )
     return
   elseif copy == -1 then
     -- Delete blueprint
@@ -168,10 +190,14 @@ function on_tick_deployer( deployer, uid )
   end
 end
 
-function deploy_blueprint( bp, deployer )
-  if not bp then return end
-  if not bp.valid_for_read then return end
-  if not bp.is_blueprint_setup() then return end
+function deploy_blueprint( uid )
+
+  local deployer = global.recursive.deployers[ uid ]
+  local blueprint = global.recursive.blueprints[ uid ]
+
+  if not blueprint then return end
+  if not blueprint.valid_for_read then return end
+  if not blueprint.is_blueprint_setup() then return end
 
   -- Rotate
   local rotation = get_signal( deployer, ROTATE_SIGNAL )
@@ -198,7 +224,7 @@ function deploy_blueprint( bp, deployer )
     return
   end
 
-  local result = bp.build_blueprint{
+  local result = blueprint.build_blueprint{
     surface = deployer.surface,
     force = deployer.force,
     position = position,
@@ -209,12 +235,15 @@ function deploy_blueprint( bp, deployer )
   for _, entity in pairs(result) do
     script.raise_event(defines.events.script_raised_built, {
       entity = entity,
-      stack = bp,
+      stack = blueprint,
     })
   end
 end
 
-function deconstruct_area( bp, deployer, deconstruct )
+function deconstruct_area( uid, deconstruct )
+  local deployer = global.recursive.deployers[ uid ]
+  local blueprint = global.recursive.blueprints[ uid ]
+
   local area = get_area( deployer )
   if deconstruct == false then
     -- Cancel area
@@ -226,7 +255,7 @@ function deconstruct_area( bp, deployer, deconstruct )
     }
   else
     -- Deconstruct area
-    local deconstruct_self = deployer.to_be_deconstructed(deployer.force)
+    local deconstruct_self = deployer.to_be_deconstructed( deployer.force )
     deployer.surface.deconstruct_area{
       area = area,
       force = deployer.force,
@@ -235,20 +264,24 @@ function deconstruct_area( bp, deployer, deconstruct )
     }
     if not deconstruct_self then
        -- Don't deconstruct myself in an area order
-      deployer.cancel_deconstruction(deployer.force)
+      deployer.cancel_deconstruction( deployer.force )
     end
   end
 end
 
-function upgrade_area(bp, deployer, upgrade)
-  local area = get_area(deployer)
+function upgrade_area( uid, upgrade )
+
+  local deployer = global.recursive.deployers[ uid ]
+  local blueprint = global.recursive.blueprints[ uid ]
+
+  local area = get_area( deployer )
   if upgrade == false then
     -- Cancel area
     deployer.surface.cancel_upgrade_area{
       area = area,
       force = deployer.force,
       skip_fog_of_war = false,
-      item = bp,
+      item = blueprint,
     }
   else
     -- Upgrade area
@@ -256,16 +289,16 @@ function upgrade_area(bp, deployer, upgrade)
       area = area,
       force = deployer.force,
       skip_fog_of_war = false,
-      item = bp,
+      item = blueprint,
     }
   end
 end
 
-function get_area(deployer)
-  local X = get_signal(deployer, X_SIGNAL)
-  local Y = get_signal(deployer, Y_SIGNAL)
-  local W = get_signal(deployer, WIDTH_SIGNAL)
-  local H = get_signal(deployer, HEIGHT_SIGNAL)
+function get_area( deployer )
+  local X = get_signal( deployer, X_SIGNAL )
+  local Y = get_signal( deployer, Y_SIGNAL )
+  local W = get_signal( deployer, WIDTH_SIGNAL )
+  local H = get_signal( deployer, HEIGHT_SIGNAL )
 
   if W < 1 then W = 1 end
   if H < 1 then H = 1 end
@@ -290,19 +323,21 @@ function get_area(deployer)
   }
 end
 
-function copy_blueprint( deployer )
-  local uid = deployer.unit_number
-  local chest = global.recursive.chests[ uid ]
-  local inventory = chest.get_inventory(defines.inventory.chest)
-  if not inventory.is_empty() then return end
-  for _, signal in pairs(global.blueprint_signals) do
-    -- Check for a signal before doing an expensive search
-    if get_signal(deployer, signal) >= 1 then
-      -- Signal exists, now we have to search for the blueprint
-      local stack = find_stack_in_network(deployer, signal.name)
-      if stack then
-        inventory[1].set_stack(stack)
+function copy_blueprint( uid )
 
+  local deployer = global.recursive.deployers[ uid ]
+  local chest = global.recursive.chests[ uid ]
+
+  local inventory = chest.get_inventory( defines.inventory.chest )
+  if not inventory.is_empty() then return end
+  for _, signal in pairs( global.blueprint_signals ) do
+    -- Check for a signal before doing an expensive search
+    if get_signal( deployer, signal ) >= 1 then
+      -- Signal exists, now we have to search for the blueprint
+      local stack = find_stack_in_network( deployer, signal.name )
+      if stack then
+        inventory[1].set_stack( stack )
+        set_blueprint( uid )
         --todo: add blueprint handling
 
         return
@@ -313,7 +348,7 @@ end
 
 -- Breadth-first search for an item in the circuit network
 -- If there are multiple items, returns the closest one (least wire hops)
-function find_stack_in_network(deployer, item_name)
+function find_stack_in_network( deployer, item_name )
   local present = {
     [con_hash(deployer, defines.circuit_connector_id.container, defines.wire_type.red)] =
     {
@@ -360,11 +395,11 @@ function find_stack_in_network(deployer, item_name)
   end
 end
 
-function con_hash(entity, connector, wire)
+function con_hash( entity, connector, wire )
   return entity.unit_number .. "-" .. connector .. "-" .. wire
 end
 
-function find_stack_in_container(entity, item_name)
+function find_stack_in_container( entity, item_name )
   if entity.type == "container" or entity.type == "logistic-container" then
     local inventory = entity.get_inventory(defines.inventory.chest)
     for i = 1, #inventory do
@@ -383,7 +418,7 @@ function find_stack_in_container(entity, item_name)
 end
 
 -- Return integer value for given Signal: {type=, name=}
-function get_signal(entity, signal)
+function get_signal( entity, signal )
   -- Cache the circuit networks to speed up performance
   local cache = global.net_cache[entity.unit_number]
   if not cache then

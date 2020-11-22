@@ -1,3 +1,19 @@
+local function tdc(object)
+	-- Deep-copy of lua table, from factorio util.lua
+	local lookup_table = {}
+	local function _copy(object)
+		if type(object) ~= 'table' then return object
+			elseif object.__self then return object
+			elseif lookup_table[object] then return lookup_table[object] end
+		local new_table = {}
+		lookup_table[object] = new_table
+		for index, value in pairs(object)
+			do new_table[_copy(index)] = _copy(value) end
+		return setmetatable(new_table, getmetatable(object))
+	end
+	return _copy(object)
+end
+
 -- Command signals
 local DEPLOY_SIGNAL = {name="construction-robot", type="item"}
 local DECONSTRUCT_SIGNAL = {name="deconstruction-planner", type="item"}
@@ -8,23 +24,23 @@ local WIDTH_SIGNAL = {name="signal-W", type="virtual"}
 local HEIGHT_SIGNAL = {name="signal-H", type="virtual"}
 local ROTATE_SIGNAL = {name="signal-R", type="virtual"}
 
+local INITIAL_RECURSIVE = {
+	deployers = {},
+	chests = {},
+	outputs = {},
+	blueprints = {},
+	deploy_cache = {}
+}
+
 function on_init()
-  global.recursive = {
-    deployers = {},
-    chests = {},
-    outputs = {},
-    blueprints = {}
-  }
+  --global.recursive = tdc( INITIAL_RECURSIVE )
+	--not needed, because it is done in on_mods_changed()
+
   on_mods_changed()
 end
 
 function on_mods_changed()
-  if not global.recursive then global.recursive = {
-    deployers = {},
-    chests = {},
-    outputs = {},
-    blueprints = {}
-  } end
+  if not global.recursive then tdc( INITIAL_RECURSIVE ) end
   global.net_cache = {}
 
   -- Construction robotics unlocks deployer chest and combinator
@@ -65,12 +81,41 @@ function on_built( event )
   end
 end
 
+local function on_entity_settings_pasted( event )
+	if not ( ( event.source.name == 'blueprint-combinator' or event.source.name == 'blueprint-deployer' ) and ( event.destination.name == 'blueprint-combinator' or event.destination.name == 'blueprint-deployer' ) ) then return end
+  local uid_source, uid_destination = event.source.unit_number, event.destination.unit_number
+
+  local old_deployer = global.recursive.deployers[ uid_destination ]
+  deployer_remove( uid_destination, true )
+  global.recursive.deployers[ uid_destination ] = event.destination
+  if event.destination.name == "blueprint-combinator" then
+    if event.source.name == "blueprint-combinator" then
+      global.recursive.chests[ uid_destination ] = tdc( global.recursive.chests[ uid_source ] )
+    else
+
+      --todo:pass inventory from source deployer-chest to destination deployer-combinator
+
+    end
+
+    global.recursive.outputs[ uid_destination ] = tdc( global.recursive.outputs[ uid_source ] )
+  else
+    global.recursive.chests[ uid_destination ] = event.destination
+
+    --todo:pass inventory from source to destination deployer-chest
+
+  end
+  global.recursive.deploy_cache[ uid_destination ] = 0 + global.recursive.deploy_cache[ uid_source ]
+  set_blueprint( uid_destination )
+
+
+end
+
 function on_tick( event )
   for uid, deployer in pairs( global.recursive.deployers ) do
     if deployer.valid then
       on_tick_deployer( uid )
     else
-      delete_deployer( uid )
+      deployer_remove( uid )
     end
   end
 end
@@ -80,9 +125,16 @@ function on_tick_deployer( uid )
   local deployer = global.recursive.deployers[ uid ]
   local chest = global.recursive.chests[ uid ]
   local output = global.recursive.outputs[ uid ]
-  local blueprint = global.recursive.blueprint[ uid ]
+  local deploy_cache = global.recursive.deploy_cache[ uid ]
 
   local deploy = get_signal( deployer, DEPLOY_SIGNAL )
+  if deploy_cache ~= deploy then
+    global.recursive.deploy_cache[ uid ] = 0 + deploy
+    set_blueprint( uid )
+  end
+
+  local blueprint = global.recursive.blueprint[ uid ]
+
   if deploy > 0 then
     if blueprint.is_blueprint then
       -- Deploy blueprint
@@ -145,20 +197,57 @@ function on_tick_deployer( uid )
   end
 end
 
-function delete_deployer( uid )
+function deployer_remove( uid, keep_entities, to_be_mined )
 
   --todo: add code to delete deployer fully on destruction of deployer entity
   --global.recursive.deployers[ uid ] = nil
   --global.recursive.chests[ uid ] = nil
   --global.recursive.outputs[ uid ] = nil
   --global.recursive.blueprints[ uid ] = nil
+	if not keep_entities then
+		local deployer = global.recursive.deployers[ uid ]
+    local output = global.recursive.outputs[ uid ]
+    local chest = global.recursive.chests[ uid ]
+
+    if chest and chest.valid and deployer and deployer.valid and chest ~= deployer then chest.destroy() end
+    if output and output.valid then output.destroy() end
+		if not to_be_mined and deployer and deployer.valid then deployer.destroy() end
+	end
+	global.recursive.deployers[ uid ] = nil
+	global.recursive.chests[ uid ] = nil
+	global.recursive.outputs[ uid ] = nil
+	global.recursive.blueprints[ uid ] = nil
+	global.recursive.deploy_cache[ uid ] = nil
+
 
 end
 
 function buid_combinator( uid )
 
-  --global.recursive.chests[ uid ] = entity
-  --todo: attach output combinator to built entity
+  local deployer = global.recursive.deployers[ uid ]
+
+  local output = deployer.surface.created_entity{
+    name = "blueprint-core-const",
+    postion = deployer.position,
+    force = deployer.force,
+    create_build_effect_smoke = false
+  }
+  local chest = deployer.surface.created_entity{
+    name = "blueprint-core-chest",
+    postion = deployer.position,
+    force = deployer.force,
+    create_build_effect_smoke = false
+  }
+  deployer.connect_neighbor{
+    wire = defines.wire_type.red, target_entity = output,
+    source_circuit_id = defines.circuit_connector_id.combinator_output
+  }
+  deployer.connect_neighbor{
+    wire = defines.wire_type.green, target_entity = output,
+    soruce_circuit_id = defines.circuit_connector_id.combinator_output
+  }
+  global.recursive.outputs[ uid ] = output
+  global.recursive.chests[ uid ] = chest
 
 end
 
@@ -168,7 +257,7 @@ function set_blueprint( uid )
   local chest = global.recursive.chests[ uid ]
   local blueprint = nil
 
-  local deploy = get_signal( deployer, DEPLOY_SIGNAL )
+  local deploy = global.recursive.deploy_cache[ uid ]
 
   if chest.get_inventory( defines.inventory.chest )[1] then
 
@@ -187,6 +276,9 @@ function set_blueprint( uid )
       global.recursive.blueprints[ uid ] = blueprint
     end
   end
+
+--todo: update output combinator
+
   return blueprint
 end
 
@@ -457,7 +549,7 @@ script.on_init(on_init)
 script.on_configuration_changed(on_mods_changed)
 script.on_event(defines.events.on_tick, on_tick)
 
--- Deployer chest events
+-- Deployer events
 local filter = {{filter = "name", name = "blueprint-deployer"},{filter = "name", name = "blueprint-combinator"}}
 script.on_event(defines.events.on_built_entity, on_built, filter)
 script.on_event(defines.events.on_robot_built_entity, on_built, filter)
@@ -465,7 +557,9 @@ script.on_event(defines.events.on_entity_cloned, on_built, filter)
 script.on_event(defines.events.script_raised_built, on_built, filter)
 script.on_event(defines.events.script_raised_revive, on_built, filter)
 
+script.on_event(defines.events.on_pre_player_mined_item, on_mined, filter)
+script.on_event(defines.events.on_robot_pre_mined, on_mined, filter)
+script.on_event(defines.events.on_entity_died, on_destroyed, filter)
+script.on_event(defines.events.script_raised_destroy, on_destroyed, filter)
 
---todo: blueprint caching
---todo: building combinator
---todo: destroying combinator
+script.on_event(defines.events.on_entity_settings_pasted, on_entity_settings_pasted)

@@ -65,23 +65,6 @@ function on_built( event )
   end
 end
 
-function delete_deployer( uid )
-
-  --todo: add code to delete deployer fully on destruction of deployer entity
-  --global.recursive.deployers[ uid ] = nil
-  --global.recursive.chests[ uid ] = nil
-  --global.recursive.outputs[ uid ] = nil
-  --global.recursive.blueprints[ uid ] = nil
-
-end
-
-function buid_combinator( uid )
-
-  --global.recursive.chests[ uid ] = entity
-  --todo: attach output combinator to built entity
-
-end
-
 function on_tick( event )
   for uid, deployer in pairs( global.recursive.deployers ) do
     if deployer.valid then
@@ -90,34 +73,6 @@ function on_tick( event )
       delete_deployer( uid )
     end
   end
-end
-
-function set_blueprint( uid )
-
-  local deployer = global.recursive.deployers[ uid ]
-  local chest = global.recursive.chests[ uid ]
-  local blueprint = nil
-
-  local deploy = get_signal( deployer, DEPLOY_SIGNAL )
-
-  if chest.get_inventory( defines.inventory.chest )[1] then
-
-    blueprint = chest.get_inventory( defines.inventory.chest )[1]
-    if not blueprint.valid_for_read then return end
-    if blueprint.is_blueprint_book then
-
-      local book_inventory = blueprint.get_inventory( defines.inventory.item_main )
-      local size = inventory.get_item_count()
-      if size < 1 then return end
-
-      if deploy > size then deploy = blueprint.active_index end
-      blueprint = book_inventory[ deploy ]
-      if not blueprint.valid_for_read then return end
-
-      global.recursive.blueprints[ uid ] = blueprint
-    end
-  end
-  return blueprint
 end
 
 function on_tick_deployer( uid )
@@ -188,6 +143,51 @@ function on_tick_deployer( uid )
     end
     return
   end
+end
+
+function delete_deployer( uid )
+
+  --todo: add code to delete deployer fully on destruction of deployer entity
+  --global.recursive.deployers[ uid ] = nil
+  --global.recursive.chests[ uid ] = nil
+  --global.recursive.outputs[ uid ] = nil
+  --global.recursive.blueprints[ uid ] = nil
+
+end
+
+function buid_combinator( uid )
+
+  --global.recursive.chests[ uid ] = entity
+  --todo: attach output combinator to built entity
+
+end
+
+function set_blueprint( uid )
+
+  local deployer = global.recursive.deployers[ uid ]
+  local chest = global.recursive.chests[ uid ]
+  local blueprint = nil
+
+  local deploy = get_signal( deployer, DEPLOY_SIGNAL )
+
+  if chest.get_inventory( defines.inventory.chest )[1] then
+
+    blueprint = chest.get_inventory( defines.inventory.chest )[1]
+    if not blueprint.valid_for_read then return end
+    if blueprint.is_blueprint_book then
+
+      local book_inventory = blueprint.get_inventory( defines.inventory.item_main )
+      local size = inventory.get_item_count()
+      if size < 1 then return end
+
+      if deploy > size then deploy = blueprint.active_index end
+      blueprint = book_inventory[ deploy ]
+      if not blueprint.valid_for_read then return end
+
+      global.recursive.blueprints[ uid ] = blueprint
+    end
+  end
+  return blueprint
 end
 
 function deploy_blueprint( uid )

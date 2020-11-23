@@ -10,4 +10,15 @@ data:extend{
       {"advanced-circuit", 1},
     },
   },
+  {
+    type = "recipe",
+    name = "blueprint-combinator"
+    result = "blueprint-combinator"
+    enabled = false,
+    ingredients = {
+      {"blueprint-deployer", 1},
+      {"arithmetic-combinator", 1},
+      {"advanced-circuit", 1},
+    },
+  },
 }

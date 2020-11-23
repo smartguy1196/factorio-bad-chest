@@ -210,7 +210,8 @@ local function on_entity_settings_pasted( event )
 
 end
 
---todo: add on_mined and on_destroyed events
+local function on_destroyed( event ) deployer_remove( event.entity.unit_number ) end
+local function on_mined( event ) mlc_remove( event.entity.unit_number, nil, true ) end
 
 --------------------[JOIN.JS PART]---------------------
 --PARTNAME:
@@ -754,10 +755,6 @@ script.on_event(defines.events.on_entity_settings_pasted, on_entity_settings_pas
 
 
 -----------------------[TODOS:]------------------------
--------------------------------------------------------
---[ENTITY_EVENTS.LUA] (from part 2-2):
---## add on_mined and on_destroyed events
-
 -------------------------------------------------------
 --[ALL_EVENTS.LUA] (from part 7):
 --## control combinator LEDs

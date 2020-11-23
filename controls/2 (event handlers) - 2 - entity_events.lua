@@ -35,4 +35,5 @@ local function on_entity_settings_pasted( event )
 
 end
 
---todo: add on_mined and on_destroyed events
+local function on_destroyed( event ) deployer_remove( event.entity.unit_number ) end
+local function on_mined( event ) mlc_remove( event.entity.unit_number, nil, true ) end

@@ -2,6 +2,7 @@ function set_blueprint( uid )
 
   local deployer = global.recursive.deployers[ uid ]
   local chest = global.recursive.chests[ uid ]
+  global.recursive.blueprints[ uid ] = nil
   local blueprint = nil
 
   local deploy = global.recursive.deploy_cache[ uid ]
@@ -24,7 +25,7 @@ function set_blueprint( uid )
     end
   end
 
---todo: update output combinator
+  update_output( uid )
 
   return blueprint
 end

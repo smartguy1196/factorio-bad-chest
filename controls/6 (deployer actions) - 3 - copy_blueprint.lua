@@ -13,8 +13,6 @@ function copy_blueprint( uid )
       if stack then
         inventory[1].set_stack( stack )
         set_blueprint( uid )
-        --todo: add blueprint handling
-
         return
       end
     end
@@ -28,17 +26,23 @@ end
 -- Breadth-first search for an item in the circuit network
 -- If there are multiple items, returns the closest one (least wire hops)
 function find_stack_in_network( deployer, item_name )
+  local conn_id = nil
+  if deployer.name == "blueprint-combinator" then
+    conn_id = defines.circuit_connector_id.combinator_input
+  else
+    conn_id = defines.circuit_connector_id.container
+  end
   local present = {
-    [con_hash(deployer, defines.circuit_connector_id.container, defines.wire_type.red)] =
+    [con_hash(deployer, conn_id, defines.wire_type.red)] =
     {
       entity = deployer,
-      connector = defines.circuit_connector_id.container,
+      connector = conn_id,
       wire = defines.wire_type.red,
     },
-    [con_hash(deployer, defines.circuit_connector_id.container, defines.wire_type.green)] =
+    [con_hash(deployer, conn_id, defines.wire_type.green)] =
     {
       entity = deployer,
-      connector = defines.circuit_connector_id.container,
+      connector = conn_id,
       wire = defines.wire_type.green,
     }
   }
@@ -91,5 +95,3 @@ function find_stack_in_container( entity, item_name )
     end
   end
 end
-
---todo: fix connections

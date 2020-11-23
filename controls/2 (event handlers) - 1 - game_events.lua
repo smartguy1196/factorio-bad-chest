@@ -3,7 +3,8 @@ local INITIAL_RECURSIVE = {
 	chests = {},
 	outputs = {},
 	blueprints = {},
-	deploy_cache = {}
+	deploy_cache = {},
+	to_be_mined = {}
 }
 
 function on_init()

@@ -21,25 +21,15 @@ local function on_entity_settings_pasted( event )
   local uid_source, uid_destination = event.source.unit_number, event.destination.unit_number
 
   local old_deployer = global.recursive.deployers[ uid_destination ]
-  deployer_remove( uid_destination, true )
+  local inventory = {
+    source = global.recursive.chests[ uid_source ].get_inventory( defines.inventory.chest ),
+    destination = global.recursive.chests[ uid_destination ].get_inventory( defines.inventory.chest )
+  }
+
+  inventory.destination[ 1 ].set_stack( inventory.source[ 1 ] )
   global.recursive.deployers[ uid_destination ] = event.destination
-  if event.destination.name == "blueprint-combinator" then
-    if event.source.name == "blueprint-combinator" then
-      global.recursive.chests[ uid_destination ] = tdc( global.recursive.chests[ uid_source ] )
-    else
-
-      --todo:pass inventory from source deployer-chest to destination deployer-combinator
-
-    end
-
-    global.recursive.outputs[ uid_destination ] = tdc( global.recursive.outputs[ uid_source ] )
-  else
-    global.recursive.chests[ uid_destination ] = event.destination
-
-    --todo:pass inventory from source to destination deployer-chest
-
-  end
   global.recursive.deploy_cache[ uid_destination ] = 0 + global.recursive.deploy_cache[ uid_source ]
+  global.recursive.to_be_mined[ uid_destination ] = nil
   set_blueprint( uid_destination )
 
 

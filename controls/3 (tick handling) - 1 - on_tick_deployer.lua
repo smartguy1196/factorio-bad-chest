@@ -1,6 +1,16 @@
 function on_tick_deployer( uid )
 
   local deployer = global.recursive.deployers[ uid ]
+
+  --this rebuilds deployer if a part is removed/broken
+
+  if deployer.name == "deployer-combinator" then
+    if not ( global.recursive.chests[ uid ] and global.recursive.outputs[ uid ] ) then
+      build_combinator( uid )
+    end
+  elseif not global.recursive.chests[ uid ] then
+    global.recursive.chests[ uid ] = deployer
+  end
   local chest = global.recursive.chests[ uid ]
   local output = global.recursive.outputs[ uid ]
   local deploy_cache = global.recursive.deploy_cache[ uid ]
@@ -11,7 +21,7 @@ function on_tick_deployer( uid )
     set_blueprint( uid )
   end
 
-  local blueprint = global.recursive.blueprint[ uid ]
+  local blueprint = global.recursive.blueprints[ uid ]
 
   if deploy > 0 then
     if blueprint.is_blueprint then
@@ -60,9 +70,6 @@ function on_tick_deployer( uid )
     return
   elseif copy == -1 then
     -- Delete blueprint
-
-    --todo: add combinator code
-
     local stack = chest.get_inventory( defines.inventory.chest )[1]
     if not stack.valid_for_read then return end
     if stack.is_blueprint
@@ -71,6 +78,8 @@ function on_tick_deployer( uid )
     or stack.is_deconstruction_item then
       stack.clear()
     end
+
+    set_blueprint( uid )
     return
   end
 end

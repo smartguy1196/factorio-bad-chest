@@ -17,3 +17,5 @@ script.on_event(defines.events.on_entity_died, on_destroyed, filter)
 script.on_event(defines.events.script_raised_destroy, on_destroyed, filter)
 
 script.on_event(defines.events.on_entity_settings_pasted, on_entity_settings_pasted)
+
+--todo: control combinator LEDs

@@ -122,7 +122,8 @@ local INITIAL_RECURSIVE = {
 	chests = {},
 	outputs = {},
 	blueprints = {},
-	deploy_cache = {}
+	deploy_cache = {},
+	to_be_mined = {}
 }
 
 function on_init()
@@ -195,25 +196,15 @@ local function on_entity_settings_pasted( event )
   local uid_source, uid_destination = event.source.unit_number, event.destination.unit_number
 
   local old_deployer = global.recursive.deployers[ uid_destination ]
-  deployer_remove( uid_destination, true )
+  local inventory = {
+    source = global.recursive.chests[ uid_source ].get_inventory( defines.inventory.chest ),
+    destination = global.recursive.chests[ uid_destination ].get_inventory( defines.inventory.chest )
+  }
+
+  inventory.destination[ 1 ].set_stack( inventory.source[ 1 ] )
   global.recursive.deployers[ uid_destination ] = event.destination
-  if event.destination.name == "blueprint-combinator" then
-    if event.source.name == "blueprint-combinator" then
-      global.recursive.chests[ uid_destination ] = tdc( global.recursive.chests[ uid_source ] )
-    else
-
-      --todo:pass inventory from source deployer-chest to destination deployer-combinator
-
-    end
-
-    global.recursive.outputs[ uid_destination ] = tdc( global.recursive.outputs[ uid_source ] )
-  else
-    global.recursive.chests[ uid_destination ] = event.destination
-
-    --todo:pass inventory from source to destination deployer-chest
-
-  end
   global.recursive.deploy_cache[ uid_destination ] = 0 + global.recursive.deploy_cache[ uid_source ]
+  global.recursive.to_be_mined[ uid_destination ] = nil
   set_blueprint( uid_destination )
 
 
@@ -230,6 +221,16 @@ end
 function on_tick_deployer( uid )
 
   local deployer = global.recursive.deployers[ uid ]
+
+  --this rebuilds deployer if a part is removed/broken
+
+  if deployer.name == "deployer-combinator" then
+    if not ( global.recursive.chests[ uid ] and global.recursive.outputs[ uid ] ) then
+      build_combinator( uid )
+    end
+  elseif not global.recursive.chests[ uid ] then
+    global.recursive.chests[ uid ] = deployer
+  end
   local chest = global.recursive.chests[ uid ]
   local output = global.recursive.outputs[ uid ]
   local deploy_cache = global.recursive.deploy_cache[ uid ]
@@ -240,7 +241,7 @@ function on_tick_deployer( uid )
     set_blueprint( uid )
   end
 
-  local blueprint = global.recursive.blueprint[ uid ]
+  local blueprint = global.recursive.blueprints[ uid ]
 
   if deploy > 0 then
     if blueprint.is_blueprint then
@@ -289,9 +290,6 @@ function on_tick_deployer( uid )
     return
   elseif copy == -1 then
     -- Delete blueprint
-
-    --todo: add combinator code
-
     local stack = chest.get_inventory( defines.inventory.chest )[1]
     if not stack.valid_for_read then return end
     if stack.is_blueprint
@@ -300,6 +298,8 @@ function on_tick_deployer( uid )
     or stack.is_deconstruction_item then
       stack.clear()
     end
+
+    set_blueprint( uid )
     return
   end
 end
@@ -312,19 +312,33 @@ end
 
 function deployer_remove( uid, keep_entities, to_be_mined )
 
-  --todo: add code to delete deployer fully on destruction of deployer entity
-  --global.recursive.deployers[ uid ] = nil
-  --global.recursive.chests[ uid ] = nil
-  --global.recursive.outputs[ uid ] = nil
-  --global.recursive.blueprints[ uid ] = nil
 	if not keep_entities then
 		local deployer = global.recursive.deployers[ uid ]
-    local output = global.recursive.outputs[ uid ]
-    local chest = global.recursive.chests[ uid ]
+		local output = global.recursive.outputs[ uid ]
+		local chest = global.recursive.chests[ uid ]
 
-    if chest and chest.valid and deployer and deployer.valid and chest ~= deployer then chest.destroy() end
-    if output and output.valid then output.destroy() end
-		if not to_be_mined and deployer and deployer.valid then deployer.destroy() end
+		if chest and chest.valid and deployer and deployer.valid then
+			if chest ~= deployer then
+				chest.destroy()
+			else
+		    local stack = chest.get_inventory( defines.inventory.chest )[1]
+		    if stack.valid_for_read then
+			    if stack.is_blueprint
+			    or stack.is_blueprint_book
+			    or stack.is_upgrade_item
+			    or stack.is_deconstruction_item then
+			      stack.clear()
+			    end
+				end
+			end
+		end
+		if output and output.valid then output.destroy() end
+		if not to_be_mined and deployer and deployer.valid then
+			deployer.destroy()
+			global.recursive.to_be_mined[ uid ] = nil
+		else
+			global.recursive.to_be_mined[ uid ] = true
+		end
 	end
 	global.recursive.deployers[ uid ] = nil
 	global.recursive.chests[ uid ] = nil
@@ -345,29 +359,32 @@ function buid_combinator( uid )
 
   local deployer = global.recursive.deployers[ uid ]
 
-  local output = deployer.surface.created_entity{
-    name = "blueprint-core-const",
-    postion = deployer.position,
-    force = deployer.force,
-    create_build_effect_smoke = false
-  }
-  local chest = deployer.surface.created_entity{
-    name = "blueprint-core-chest",
-    postion = deployer.position,
-    force = deployer.force,
-    create_build_effect_smoke = false
-  }
-  deployer.connect_neighbor{
-    wire = defines.wire_type.red, target_entity = output,
-    source_circuit_id = defines.circuit_connector_id.combinator_output
-  }
-  deployer.connect_neighbor{
-    wire = defines.wire_type.green, target_entity = output,
-    soruce_circuit_id = defines.circuit_connector_id.combinator_output
-  }
-  global.recursive.outputs[ uid ] = output
-  global.recursive.chests[ uid ] = chest
-
+  if not global.recursive.to_be_mined[ uid ] then
+    if global.recursive.outputs[ uid ] then global.recursive.outputs.destroy() end
+    if global.recursive.chests[ uid ] then global.recursive.chests.destroy() end
+    local output = deployer.surface.created_entity{
+      name = "blueprint-core-const",
+      postion = deployer.position,
+      force = deployer.force,
+      create_build_effect_smoke = false
+    }
+    local chest = deployer.surface.created_entity{
+      name = "blueprint-core-chest",
+      postion = deployer.position,
+      force = deployer.force,
+      create_build_effect_smoke = false
+    }
+    deployer.connect_neighbor{
+      wire = defines.wire_type.red, target_entity = output,
+      source_circuit_id = defines.circuit_connector_id.combinator_output
+    }
+    deployer.connect_neighbor{
+      wire = defines.wire_type.green, target_entity = output,
+      soruce_circuit_id = defines.circuit_connector_id.combinator_output
+    }
+    global.recursive.outputs[ uid ] = output
+    global.recursive.chests[ uid ] = chest`
+  end
 end
 
 --------------------[JOIN.JS PART]---------------------
@@ -380,6 +397,7 @@ function set_blueprint( uid )
 
   local deployer = global.recursive.deployers[ uid ]
   local chest = global.recursive.chests[ uid ]
+  global.recursive.blueprints[ uid ] = nil
   local blueprint = nil
 
   local deploy = global.recursive.deploy_cache[ uid ]
@@ -402,7 +420,7 @@ function set_blueprint( uid )
     end
   end
 
---todo: update output combinator
+  update_output( uid )
 
   return blueprint
 end
@@ -413,6 +431,78 @@ end
 --FILEPATH:
 --.\controls\5 (active bp control) - 2 - update_output.lua
 
+local function map_signals( map )
+    local signals = {}
+    local i = 1
+    for k, v in pairs(map) do
+        signals[i] = {
+            count = v,
+            index = i,
+            signal = { name = k, type = "item" }
+        }
+        i = i + 1
+    end
+    return signals
+end
+
+function update_output( uid )
+  if not global.recursive.deployers[ uid ].name == "blueprint-combinator" then return end
+
+  local blueprint = global.recursive.blueprints[ uid ]
+  if not blueprint.is_blueprint_setup() then return end
+
+  local output = global.recursive.outputs[ uid ]
+  local control = {
+    output = output.get_or_create_control_behavior()
+  }
+
+  local entities = blueprint.get_blueprint_entities()
+  local tiles = blueprint.get_blueprint_tiles()
+
+  local map = {}
+
+  local count = {
+    entities = 0,
+    tiles = 0,
+    map = 0
+  }
+
+  if entities then
+    for _, entity in pairs( entities ) do
+      count.entities = count.entities + 1
+      local item = game.entity_prototypes[ entity.name ].items_to_place_this[ 1 ]
+      if type( item ) == "string" then
+        item = {
+          name = item,
+          count = game.item_prototypes[ item ].stack_size
+        }
+      end
+
+      map[ item.name ] = ( map[ item.name ] or 0 ) + item.count
+    end
+  end
+
+  if tiles then
+    for _, tile in pairs( tiles ) do
+      count.tiles = count.tiles + 1
+      local item = game.entity_prototypes[ tiles.name ].items_to_place_this[ 1 ]
+      if type( item ) == "string" then
+        item = {
+          name = item,
+          count = game.item_prototypes[ item ].stack_size
+        }
+      end
+
+      map[ item.name ] = ( map[ item.name ] or 0 ) + item.count
+    end
+  end
+
+  for _ in pairs( map ) do count.map = count.map + 1 end
+
+  signals = map_signals( map )
+  control.output.enabled, control.output.parameters = true, { parameters = signals }
+
+end
 
 --------------------[JOIN.JS PART]---------------------
 --PARTNAME:
@@ -551,8 +641,6 @@ function copy_blueprint( uid )
       if stack then
         inventory[1].set_stack( stack )
         set_blueprint( uid )
-        --todo: add blueprint handling
-
         return
       end
     end
@@ -566,17 +654,23 @@ end
 -- Breadth-first search for an item in the circuit network
 -- If there are multiple items, returns the closest one (least wire hops)
 function find_stack_in_network( deployer, item_name )
+  local conn_id = nil
+  if deployer.name == "blueprint-combinator" then
+    conn_id = defines.circuit_connector_id.combinator_input
+  else
+    conn_id = defines.circuit_connector_id.container
+  end
   local present = {
-    [con_hash(deployer, defines.circuit_connector_id.container, defines.wire_type.red)] =
+    [con_hash(deployer, conn_id, defines.wire_type.red)] =
     {
       entity = deployer,
-      connector = defines.circuit_connector_id.container,
+      connector = conn_id,
       wire = defines.wire_type.red,
     },
-    [con_hash(deployer, defines.circuit_connector_id.container, defines.wire_type.green)] =
+    [con_hash(deployer, conn_id, defines.wire_type.green)] =
     {
       entity = deployer,
-      connector = defines.circuit_connector_id.container,
+      connector = conn_id,
       wire = defines.wire_type.green,
     }
   }
@@ -630,8 +724,6 @@ function find_stack_in_container( entity, item_name )
   end
 end
 
---todo: fix connections
-
 --------------------[JOIN.JS PART]---------------------
 --PARTNAME:
 --all_events.lua
@@ -658,12 +750,14 @@ script.on_event(defines.events.script_raised_destroy, on_destroyed, filter)
 
 script.on_event(defines.events.on_entity_settings_pasted, on_entity_settings_pasted)
 
+--todo: control combinator LEDs
 
---todo(from part 2-2):pass inventory from source deployer-chest to destination deployer-combinator
---todo(from part 2-2):pass inventory from source to destination deployer-chest
---todo(from part 2-2): add on_mined and on_destroyed events
---todo(from part 3-1): add combinator code
---todo(from part 4-1): add code to delete deployer fully on destruction of deployer entity
---todo(from part 5-1): update output combinator
---todo(from part 6-3): add blueprint handling
---todo(from part 6-3): fix connections
+
+-----------------------[TODOS:]------------------------
+-------------------------------------------------------
+--[ENTITY_EVENTS.LUA] (from part 2-2):
+--## add on_mined and on_destroyed events
+
+-------------------------------------------------------
+--[ALL_EVENTS.LUA] (from part 7):
+--## control combinator LEDs
